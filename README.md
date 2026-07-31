@@ -7,7 +7,7 @@ The goal isn't the game; it's the networking. Each phase adds one technique real
 ## Roadmap
 
 - [x] **Phase 0** — Deterministic local sim: fixed 60Hz timestep, pure `(state, inputs) → nextState`, interpolated rendering, determinism test
-- [ ] **Phase 1** — Authoritative server + network conditions simulator
+- [x] **Phase 1** — Authoritative server + network conditions simulator
 - [ ] **Phase 2** — Snapshot interpolation for remote entities
 - [ ] **Phase 3** — Client-side prediction for your own paddle
 - [ ] **Phase 4** — Puck prediction & reconciliation
@@ -17,10 +17,19 @@ The goal isn't the game; it's the networking. Each phase adds one technique real
 
 ## Run it
 
+Two terminals:
+
 ```
-npm install
-npm run dev
+npm run dev:server   # authoritative ws server on :8081 (60Hz sim, 20Hz snapshots)
+npm run dev          # vite client on :5173
 ```
+
+Open http://localhost:5173 in two browser windows — first one in is blue, second is red. Each player sees their own goal at the bottom (the view is rotated 180° for player 1).
+
+The panel in the corner is the network conditions simulator: drag latency to 150ms and feel it. As of Phase 1 the client renders exactly what the server sends, so two distinct problems appear immediately:
+
+1. **Your own paddle lags your finger** — every input rides a full round trip before you see its effect. Fixed by client-side prediction (Phase 3).
+2. **Everything stutters** — snapshots arrive at 20Hz and are drawn as-is. Fixed by snapshot interpolation (Phase 2).
 
 ## Tests
 
