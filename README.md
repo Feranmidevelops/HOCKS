@@ -6,7 +6,7 @@ The goal isn't the game; it's the networking. Each phase adds one technique real
 
 ## Roadmap
 
-- [ ] **Phase 0** — Deterministic local sim: fixed 60Hz timestep, pure `(state, inputs) → nextState`, interpolated rendering, determinism test
+- [x] **Phase 0** — Deterministic local sim: fixed 60Hz timestep, pure `(state, inputs) → nextState`, interpolated rendering, determinism test
 - [ ] **Phase 1** — Authoritative server + network conditions simulator
 - [ ] **Phase 2** — Snapshot interpolation for remote entities
 - [ ] **Phase 3** — Client-side prediction for your own paddle
