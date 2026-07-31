@@ -1,6 +1,7 @@
 import { TABLE_H, TABLE_W, TICK_RATE } from '../sim/constants'
 import type { NetSimConfig } from '../protocol'
 import { trackPointer } from './input'
+import { SnapshotBuffer } from './interp'
 import { connect } from './net'
 import { render } from './render'
 import { toTableCoords, toViewState } from './view'
@@ -20,8 +21,19 @@ function fit() {
 fit()
 window.addEventListener('resize', fit)
 
-const net = connect(`ws://${location.hostname}:8081`)
+const buffer = new SnapshotBuffer()
+const net = connect(`ws://${location.hostname}:8081`, {
+  onSnapshot: (s) => buffer.push(s, performance.now()),
+  onDrop: () => buffer.reset(),
+})
 const pointer = trackPointer(canvas)
+
+// Debug handle: lets tooling (and later the Phase 7 overlay) compare the
+// interpolated view against the raw latest snapshot.
+;(window as unknown as Record<string, unknown>).__hocks = {
+  sample: () => buffer.sample(performance.now()),
+  latest: () => net.latest(),
+}
 
 // Send the latest pointer target at tick rate. No sequence numbers yet —
 // latest-wins is all Phase 1 needs (sequencing arrives with prediction).
@@ -30,13 +42,13 @@ setInterval(() => {
   if (idx !== null) net.send({ type: 'input', target: toTableCoords(pointer(), idx) })
 }, 1000 / TICK_RATE)
 
-// Phase 1 renders exactly what the server sends: the latest snapshot, drawn
-// as-is. No local sim, no interpolation — the 20Hz stutter and the laggy
-// own-paddle are the two problems the next phases fix, and they should be
-// felt, not hidden.
+// Phase 2: render from the interpolation buffer — ~100ms in the past,
+// between the two snapshots that straddle render time. Remote motion is
+// smooth at the cost of added view latency; the own-paddle lag is still
+// here (client-side prediction is Phase 3's fix, not interpolation's).
 function frame() {
   ctx.setTransform(canvas.width / TABLE_W, 0, 0, canvas.height / TABLE_H, 0, 0)
-  const s = net.latest()
+  const s = buffer.sample(performance.now()) ?? net.latest()
   const idx = net.playerIndex()
   if (s !== null && idx !== null) {
     const v = toViewState(s, idx)

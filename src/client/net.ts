@@ -9,8 +9,14 @@ export interface NetClient {
   send: (msg: ClientMsg) => void
 }
 
+export interface NetHandlers {
+  onSnapshot?: (state: SimState) => void
+  /** Fired when the connection drops — interpolation buffers must reset. */
+  onDrop?: () => void
+}
+
 /** Connect to the game server; reconnects automatically unless it was full. */
-export function connect(url: string): NetClient {
+export function connect(url: string, handlers: NetHandlers = {}): NetClient {
   let ws: WebSocket
   let latest: SimState | null = null
   let playerIndex: 0 | 1 | null = null
@@ -24,8 +30,10 @@ export function connect(url: string): NetClient {
     }
     ws.onmessage = (e) => {
       const msg: ServerMsg = JSON.parse(String(e.data))
-      if (msg.type === 'snapshot') latest = msg.state
-      else if (msg.type === 'welcome') playerIndex = msg.playerIndex
+      if (msg.type === 'snapshot') {
+        latest = msg.state
+        handlers.onSnapshot?.(msg.state)
+      } else if (msg.type === 'welcome') playerIndex = msg.playerIndex
       else if (msg.type === 'full') {
         rejected = true
         status = 'server full (two players max)'
@@ -34,6 +42,7 @@ export function connect(url: string): NetClient {
     ws.onclose = () => {
       playerIndex = null
       latest = null
+      handlers.onDrop?.()
       if (!rejected) {
         status = 'disconnected — retrying…'
         setTimeout(open, 1000)
