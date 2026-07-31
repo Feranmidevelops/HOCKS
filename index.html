@@ -11,6 +11,7 @@
         height: 100%;
         background: #0b0e14;
         overflow: hidden;
+        font-family: ui-monospace, Consolas, monospace;
       }
       body {
         display: flex;
@@ -20,9 +21,46 @@
       canvas {
         touch-action: none;
       }
+      #netsim {
+        position: fixed;
+        top: 10px;
+        left: 10px;
+        color: #8b96ad;
+        font-size: 12px;
+        background: #141924cc;
+        border: 1px solid #2e3850;
+        border-radius: 6px;
+        padding: 8px 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        z-index: 10;
+      }
+      #netsim label {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      #netsim input {
+        width: 110px;
+      }
+      #status {
+        position: fixed;
+        bottom: 10px;
+        left: 10px;
+        color: #8b96ad;
+        font-size: 12px;
+        z-index: 10;
+      }
     </style>
   </head>
   <body>
+    <div id="netsim">
+      <label>latency <input id="lat" type="range" min="0" max="400" step="10" value="0" /> <span id="latv">0</span>ms</label>
+      <label>jitter&nbsp; <input id="jit" type="range" min="0" max="200" step="5" value="0" /> <span id="jitv">0</span>ms</label>
+      <label>loss&nbsp;&nbsp;&nbsp; <input id="loss" type="range" min="0" max="30" step="1" value="0" /> <span id="lossv">0</span>%</label>
+    </div>
+    <div id="status">connecting…</div>
     <canvas id="game"></canvas>
     <script type="module" src="/src/client/main.ts"></script>
   </body>
