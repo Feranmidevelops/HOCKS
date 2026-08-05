@@ -11,7 +11,7 @@ The goal isn't the game; it's the networking. Each phase adds one technique real
 - [x] **Phase 2** — Snapshot interpolation for remote entities
 - [x] **Phase 3** — Client-side prediction for your own paddle
 - [x] **Phase 4** — Puck prediction & reconciliation
-- [ ] **Phase 5** — Error correction that doesn't look like teleporting
+- [x] **Phase 5** — Error correction that doesn't look like teleporting
 - [ ] **Phase 6** — Contested outcomes, reconnects, rematch flow
 - [ ] **Phase 7** — Debug overlay + measured numbers from real regions
 
@@ -42,6 +42,17 @@ Measured at 150ms one-way latency: after striking the puck, the predicted puck m
 During resimulation the opponent is frozen at their last known position — their future inputs are the one thing the client cannot know. So misprediction isn't an edge case; it's **guaranteed**, and it concentrates exactly at the moment the opponent strikes. Measured: an opponent strike produced a **67-unit single-frame jump** in the predicted puck (physics allows ~37u/frame max — the rest is the correction teleporting). Phase 4 renders that jump raw, deliberately. Making it not look like teleporting is Phase 5.
 
 One free lunch: because the client corrects *toward the server's state* rather than running lockstep, floating-point drift between Node and the browser doesn't matter here. Rollback fighting games need bit-exactness across machines; this architecture doesn't.
+
+## Phase 5: corrections that don't teleport
+
+The sim corrects instantly (physics never lies); only the *display* blends. On each reconciliation, the gap between what was shown and the corrected truth becomes an error offset — position **and** velocity — that decays to zero. Velocity error is integrated into position error, so the displayed puck keeps a ghost of its old momentum and *curves* onto the true path instead of kinking sideways.
+
+Thresholds, chosen by feel and written down:
+
+- **Snap above 140u** (~⅓ table width): beyond that the puck isn't slightly off, it's somewhere else — easing would show it gliding through paddles and walls, which lies harder than an honest teleport. Goals and freeze resets always snap for the same reason.
+- **Decay: position τ=80ms, velocity τ=60ms** — ~85% of the error is gone by 150ms (the roadmap's 100–200ms window); velocity decays faster than position so the ghost momentum can't overshoot.
+
+Measured on the Phase 4 scenario (opponent strike, 150ms latency): a correction that peaked at **36u** of error rendered with a maximum frame-to-frame movement of **21u — inside the 37u/frame physics ceiling** — and fully released 333ms after peak. The same class of event in Phase 4 teleported 67u in one frame. The status bar shows `smoothing Nu` while an offset is live.
 
 ## Tests
 
