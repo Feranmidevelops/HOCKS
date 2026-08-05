@@ -3,6 +3,7 @@ import type { NetSimConfig } from '../protocol'
 import { trackPointer } from './input'
 import { SnapshotBuffer } from './interp'
 import { connect } from './net'
+import { OwnPaddlePredictor } from './predict'
 import { render } from './render'
 import { toTableCoords, toViewState } from './view'
 
@@ -28,11 +29,15 @@ const net = connect(`ws://${location.hostname}:8081`, {
 })
 const pointer = trackPointer(canvas)
 
+// Own paddle runs locally (Phase 3); recreated if our seat ever changes.
+let predictor: OwnPaddlePredictor | null = null
+
 // Debug handle: lets tooling (and later the Phase 7 overlay) compare the
-// interpolated view against the raw latest snapshot.
+// interpolated view against the raw latest snapshot and the predicted paddle.
 ;(window as unknown as Record<string, unknown>).__hocks = {
   sample: () => buffer.sample(performance.now()),
   latest: () => net.latest(),
+  own: () => (predictor === null ? null : predictor.view()),
 }
 
 // Send the latest pointer target at tick rate. No sequence numbers yet —
@@ -42,14 +47,23 @@ setInterval(() => {
   if (idx !== null) net.send({ type: 'input', target: toTableCoords(pointer(), idx) })
 }, 1000 / TICK_RATE)
 
-// Phase 2: render from the interpolation buffer — ~100ms in the past,
-// between the two snapshots that straddle render time. Remote motion is
-// smooth at the cost of added view latency; the own-paddle lag is still
-// here (client-side prediction is Phase 3's fix, not interpolation's).
+// Phase 2 + 3: remote entities render from the interpolation buffer (~100ms
+// in the past, smooth); the OWN paddle renders from local prediction —
+// applied instantly, computed by the same code the server runs. Two
+// different times on one screen: the price of feeling responsive.
 function frame() {
   ctx.setTransform(canvas.width / TABLE_W, 0, 0, canvas.height / TABLE_H, 0, 0)
-  const s = buffer.sample(performance.now()) ?? net.latest()
+  const now = performance.now()
+  let s = buffer.sample(now) ?? net.latest()
   const idx = net.playerIndex()
+  if (idx !== null) {
+    if (predictor === null || predictor.player !== idx) predictor = new OwnPaddlePredictor(idx)
+    predictor.advance(now, toTableCoords(pointer(), idx))
+    if (s !== null) {
+      const own = predictor.view()
+      s = { ...s, paddles: idx === 0 ? [own, s.paddles[1]] : [s.paddles[0], own] }
+    }
+  }
   if (s !== null && idx !== null) {
     const v = toViewState(s, idx)
     render(ctx, v, v, 0)
