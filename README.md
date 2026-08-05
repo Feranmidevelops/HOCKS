@@ -12,7 +12,7 @@ The goal isn't the game; it's the networking. Each phase adds one technique real
 - [x] **Phase 3** — Client-side prediction for your own paddle
 - [x] **Phase 4** — Puck prediction & reconciliation
 - [x] **Phase 5** — Error correction that doesn't look like teleporting
-- [ ] **Phase 6** — Contested outcomes, reconnects, rematch flow
+- [x] **Phase 6** — Contested outcomes, reconnects, rematch flow
 - [ ] **Phase 7** — Debug overlay + measured numbers from real regions
 
 ## Run it
@@ -53,6 +53,17 @@ Thresholds, chosen by feel and written down:
 - **Decay: position τ=80ms, velocity τ=60ms** — ~85% of the error is gone by 150ms (the roadmap's 100–200ms window); velocity decays faster than position so the ghost momentum can't overshoot.
 
 Measured on the Phase 4 scenario (opponent strike, 150ms latency): a correction that peaked at **36u** of error rendered with a maximum frame-to-frame movement of **21u — inside the 37u/frame physics ceiling** — and fully released 333ms after peak. The same class of event in Phase 4 teleported 67u in one frame. The status bar shows `smoothing Nu` while an offset is live.
+
+## Phase 6: contested outcomes and the unhappy paths
+
+**The defined answer for contested goals: the client never predicts a goal.** The predicted timeline runs the sim with goal resolution off — a puck that crosses the line locally coasts into the goal void and parks there. Score, freeze, the GOAL banner, and the centre reset happen only on the server's word (an epoch change, which snaps honestly). A denial — a save the client hadn't seen yet — arrives as an ordinary smoothed correction. No flicker, no rolled-back score, ever. Measured at 150ms latency: the puck sat voided in the mouth for ~20 frames before the server's confirmation landed.
+
+The rest of what separates a demo from a game, driven by a unit-tested server state machine (`src/server/director.ts`):
+
+- **Pause on drop**: an opponent vanishing mid-rally freezes the game exactly where it was, for up to 30s
+- **Reconnect mid-rally**: rejoining a paused game resumes it — score and puck untouched
+- **Rematch**: first to 7 wins (server-decided, like goals; `WIN_SCORE` env for testing); both players click to start a fresh game on the same connection
+- Game resets keep the tick counter monotonic — client snapshot buffers reject rewound ticks by design
 
 ## Tests
 
