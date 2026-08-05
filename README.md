@@ -9,7 +9,7 @@ The goal isn't the game; it's the networking. Each phase adds one technique real
 - [x] **Phase 0** — Deterministic local sim: fixed 60Hz timestep, pure `(state, inputs) → nextState`, interpolated rendering, determinism test
 - [x] **Phase 1** — Authoritative server + network conditions simulator
 - [x] **Phase 2** — Snapshot interpolation for remote entities
-- [ ] **Phase 3** — Client-side prediction for your own paddle
+- [x] **Phase 3** — Client-side prediction for your own paddle
 - [ ] **Phase 4** — Puck prediction & reconciliation
 - [ ] **Phase 5** — Error correction that doesn't look like teleporting
 - [ ] **Phase 6** — Contested outcomes, reconnects, rematch flow
@@ -28,7 +28,7 @@ Open http://localhost:5173 in two browser windows — first one in is blue, seco
 
 The panel in the corner is the network conditions simulator: drag latency to 150ms and feel it. Phase 1 (render snapshots verbatim) surfaced two distinct problems:
 
-1. **Your own paddle lags your finger** — every input rides a full round trip before you see its effect. Fixed by client-side prediction (Phase 3).
+1. **Your own paddle lags your finger** — every input rides a full round trip before you see its effect. ~~Fixed by client-side prediction (Phase 3).~~ **Fixed**: the client runs the exact server movement code (`movePaddle`, same substeps) locally and renders the result immediately. Measured at 200ms one-way latency after a fast sweep: the predicted paddle reached the target in 200ms (pure travel time), the server's echo started moving at ~400ms (the RTT) and arrived at 600ms — at *exactly* the predicted position. The paddle is the easy prediction case: it depends only on your own input, which you know instantly and perfectly. The shared puck depends on the opponent's input too — that's Phase 4.
 2. **Everything stutters** — snapshots arrive at 20Hz and were drawn as-is. ~~Fixed by snapshot interpolation (Phase 2).~~ **Fixed**: the client now renders ~100ms in the past, interpolating between the two snapshots that straddle render time. Measured on a client at 150ms latency + 60ms jitter + 5% loss: the raw feed changed the puck's position on 18 of 60 render frames; the interpolated view on 59 of 60.
 
 The Phase 2 trade is explicit: another 100ms of view delay bought per-frame smoothness and loss headroom (a dropped snapshot just widens the interpolation pair). Interpolation deliberately never extrapolates — guessing physics is prediction's job (Phases 3–4), not the renderer's.
