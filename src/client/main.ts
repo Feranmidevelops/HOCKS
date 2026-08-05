@@ -28,7 +28,9 @@ window.addEventListener('resize', fit)
 let reconciler: Reconciler | null = null
 
 const buffer = new SnapshotBuffer()
-const net = connect(`ws://${location.hostname}:8081`, {
+// ?port=8082 points this client at an alternate server instance (testing).
+const wsPort = new URLSearchParams(location.search).get('port') ?? '8081'
+const net = connect(`ws://${location.hostname}:${wsPort}`, {
   onSnapshot: (s, ack) => {
     buffer.push(s, performance.now())
     reconciler?.onSnapshot(s, ack)
@@ -43,6 +45,7 @@ const pointer = trackPointer(canvas)
   sample: () => buffer.sample(performance.now()),
   latest: () => net.latest(),
   predicted: () => (reconciler === null ? null : reconciler.view()),
+  err: () => (reconciler === null ? 0 : reconciler.correctionError()),
 }
 
 // Phase 4 render composition, entity by entity:
@@ -81,7 +84,9 @@ function frame() {
   // The view flip means every player sees themselves as blue at the bottom.
   const idxText = idx === null ? '' : ` · player ${idx} · you are blue (bottom)`
   const pendText = reconciler === null ? '' : ` · ${reconciler.pendingCount()} unacked inputs`
-  statusEl.textContent = `${net.status()}${idxText}${pendText}`
+  const err = reconciler === null ? 0 : reconciler.correctionError()
+  const errText = err >= 1 ? ` · smoothing ${Math.round(err)}u` : ''
+  statusEl.textContent = `${net.status()}${idxText}${pendText}${errText}`
   requestAnimationFrame(frame)
 }
 requestAnimationFrame(frame)
