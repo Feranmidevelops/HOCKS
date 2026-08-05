@@ -22,8 +22,15 @@ const cloneBody = (b: Body): Body => ({
  * Advance the simulation by exactly one fixed tick. Pure: never mutates
  * `state` or `input`, reads no clocks, uses no randomness — the same
  * (state, input) always returns the same next state.
+ *
+ * `resolveGoals` (default true, what the server runs): a puck fully across
+ * a goal line scores, freezes play, and resets to centre. With false — the
+ * client's predicted timeline — goals are never resolved locally: the puck
+ * coasts into the goal void and parks there until the server either
+ * declares the goal (epoch snap to centre) or denies it (a save the client
+ * hadn't seen yet arrives as a normal correction). The server owns goals.
  */
-export function step(state: SimState, input: InputFrame): SimState {
+export function step(state: SimState, input: InputFrame, resolveGoals = true): SimState {
   const puck = cloneBody(state.puck)
   const paddles: [Body, Body] = [cloneBody(state.paddles[0]), cloneBody(state.paddles[1])]
   const score: [number, number] = [state.score[0], state.score[1]]
@@ -45,12 +52,20 @@ export function step(state: SimState, input: InputFrame): SimState {
     puck.vel = swept.vel
 
     // Fully across a goal line = goal. The top hole is player 0's target.
-    if (puck.pos.y < -PUCK_R) {
-      scorer = 0
-      continue
-    }
-    if (puck.pos.y > TABLE_H + PUCK_R) {
-      scorer = 1
+    if (puck.pos.y < -PUCK_R || puck.pos.y > TABLE_H + PUCK_R) {
+      if (resolveGoals) {
+        scorer = puck.pos.y < 0 ? 0 : 1
+        continue
+      }
+      // Unresolved: park in the goal void awaiting the server's word.
+      const cap = 3 * PUCK_R
+      if (puck.pos.y < -cap) {
+        puck.pos.y = -cap
+        puck.vel = { x: 0, y: 0 }
+      } else if (puck.pos.y > TABLE_H + cap) {
+        puck.pos.y = TABLE_H + cap
+        puck.vel = { x: 0, y: 0 }
+      }
       continue
     }
 
@@ -77,9 +92,10 @@ export function step(state: SimState, input: InputFrame): SimState {
     freeze--
   } else {
     // Phase 0 anti-soft-lock (see constants.ts): a stalled puck in the
-    // unreachable far half drifts back toward the player's side.
+    // unreachable far half drifts back toward the player's side. On-table
+    // only — a puck parked in the goal void must stay there.
     const speed = Math.hypot(puck.vel.x, puck.vel.y)
-    if (speed < MIN_LIVE_SPEED && puck.pos.y < TABLE_H / 2 - PUCK_R) {
+    if (speed < MIN_LIVE_SPEED && puck.pos.y < TABLE_H / 2 - PUCK_R && puck.pos.y > PUCK_R) {
       const dx = TABLE_W / 2 - puck.pos.x
       const dy = TABLE_H * 0.75 - puck.pos.y
       const d = Math.hypot(dx, dy)
