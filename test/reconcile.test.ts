@@ -53,7 +53,7 @@ describe('reconciliation', () => {
     expect(r.view()).toStrictEqual({ ...ref })
   })
 
-  it('adopts an authoritative correction the local prediction never saw', () => {
+  it('blends an authoritative correction instead of teleporting (Phase 5)', () => {
     const r = new Reconciler(0)
     let now = 3000
     r.advance(now, { x: 100, y: 750 })
@@ -70,11 +70,21 @@ describe('reconciliation', () => {
     struck.puck.vel = { x: 250, y: 900 }
     r.onSnapshot(struck, 1)
 
-    const after = r.view()!
-    const speed = Math.hypot(after.puck.vel.x, after.puck.vel.y)
-    expect(speed).toBeGreaterThan(0)
-    expect(speed).toBeLessThanOrEqual(PUCK_MAX_SPEED)
-    // The correction is a jump — Phase 4 renders it raw, Phase 5 smooths it.
-    expect(after.puck.pos).not.toStrictEqual(before.puck.pos)
+    // At the correction instant the DISPLAY doesn't move: the whole gap sits
+    // in the error offset. The sim underneath already carries the true vel.
+    const atCorrection = r.view()!
+    expect(atCorrection.puck.pos.x).toBeCloseTo(before.puck.pos.x, 6)
+    expect(atCorrection.puck.pos.y).toBeCloseTo(before.puck.pos.y, 6)
+    expect(Math.hypot(atCorrection.puck.vel.x, atCorrection.puck.vel.y)).toBeLessThanOrEqual(
+      PUCK_MAX_SPEED,
+    )
+    expect(r.correctionError()).toBeGreaterThan(50)
+
+    // ~500ms later the offset has fully decayed: display equals truth.
+    for (let i = 0; i < 30; i++) {
+      now += TICK
+      r.advance(now, { x: 100, y: 750 })
+    }
+    expect(r.correctionError()).toBe(0)
   })
 })
