@@ -10,7 +10,8 @@ export interface NetClient {
 }
 
 export interface NetHandlers {
-  onSnapshot?: (state: SimState) => void
+  /** ack = highest own-input seq this state reflects (Phase 4). */
+  onSnapshot?: (state: SimState, ack: number) => void
   /** Fired when the connection drops — interpolation buffers must reset. */
   onDrop?: () => void
 }
@@ -32,7 +33,7 @@ export function connect(url: string, handlers: NetHandlers = {}): NetClient {
       const msg: ServerMsg = JSON.parse(String(e.data))
       if (msg.type === 'snapshot') {
         latest = msg.state
-        handlers.onSnapshot?.(msg.state)
+        handlers.onSnapshot?.(msg.state, msg.ack)
       } else if (msg.type === 'welcome') playerIndex = msg.playerIndex
       else if (msg.type === 'full') {
         rejected = true

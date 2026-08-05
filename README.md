@@ -10,7 +10,7 @@ The goal isn't the game; it's the networking. Each phase adds one technique real
 - [x] **Phase 1** — Authoritative server + network conditions simulator
 - [x] **Phase 2** — Snapshot interpolation for remote entities
 - [x] **Phase 3** — Client-side prediction for your own paddle
-- [ ] **Phase 4** — Puck prediction & reconciliation
+- [x] **Phase 4** — Puck prediction & reconciliation
 - [ ] **Phase 5** — Error correction that doesn't look like teleporting
 - [ ] **Phase 6** — Contested outcomes, reconnects, rematch flow
 - [ ] **Phase 7** — Debug overlay + measured numbers from real regions
@@ -32,6 +32,16 @@ The panel in the corner is the network conditions simulator: drag latency to 150
 2. **Everything stutters** — snapshots arrive at 20Hz and were drawn as-is. ~~Fixed by snapshot interpolation (Phase 2).~~ **Fixed**: the client now renders ~100ms in the past, interpolating between the two snapshots that straddle render time. Measured on a client at 150ms latency + 60ms jitter + 5% loss: the raw feed changed the puck's position on 18 of 60 render frames; the interpolated view on 59 of 60.
 
 The Phase 2 trade is explicit: another 100ms of view delay bought per-frame smoothness and loss headroom (a dropped snapshot just widens the interpolation pair). Interpolation deliberately never extrapolates — guessing physics is prediction's job (Phases 3–4), not the renderer's.
+
+## Phase 4: the puck at present time
+
+Every client tick sends an input tagged with a sequence number and keeps it in an unacked buffer. Snapshots are personalized: each player's carries the highest own-input seq the state reflects. On every snapshot the client **resets to the server's state, drops acked inputs, and resimulates the unacked rest** — so the puck (and own paddle) render at present time instead of one RTT in the past. The unacked count in the status bar is literally your RTT expressed in ticks.
+
+Measured at 150ms one-way latency: after striking the puck, the predicted puck moves at local contact; the server echo follows **366ms later**.
+
+During resimulation the opponent is frozen at their last known position — their future inputs are the one thing the client cannot know. So misprediction isn't an edge case; it's **guaranteed**, and it concentrates exactly at the moment the opponent strikes. Measured: an opponent strike produced a **67-unit single-frame jump** in the predicted puck (physics allows ~37u/frame max — the rest is the correction teleporting). Phase 4 renders that jump raw, deliberately. Making it not look like teleporting is Phase 5.
+
+One free lunch: because the client corrects *toward the server's state* rather than running lockstep, floating-point drift between Node and the browser doesn't matter here. Rollback fighting games need bit-exactness across machines; this architecture doesn't.
 
 ## Tests
 

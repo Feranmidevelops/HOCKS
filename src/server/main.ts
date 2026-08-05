@@ -25,14 +25,28 @@ interface Seat {
 }
 
 const seats: [Seat | null, Seat | null] = [null, null]
-const targets: [Vec2, Vec2] = [{ ...DEFAULT_TARGETS[0] }, { ...DEFAULT_TARGETS[1] }]
+
+/** Latest input per seat, seq-wins: loss can skip seqs, TCP can't reorder them. */
+interface LatestInput {
+  seq: number
+  target: Vec2
+}
+const inputs: [LatestInput, LatestInput] = [
+  { seq: 0, target: { ...DEFAULT_TARGETS[0] } },
+  { seq: 0, target: { ...DEFAULT_TARGETS[1] } },
+]
 
 function handle(idx: 0 | 1, seat: Seat, msg: ClientMsg): void {
   if (msg.type === 'input') {
     // Never let non-finite numbers into the sim — NaN poisons every state
     // downstream of it. The sim clamps range; we only vet finiteness.
-    if (Number.isFinite(msg.target?.x) && Number.isFinite(msg.target?.y)) {
-      targets[idx] = { x: msg.target.x, y: msg.target.y }
+    if (
+      Number.isFinite(msg.seq) &&
+      msg.seq > inputs[idx].seq &&
+      Number.isFinite(msg.target?.x) &&
+      Number.isFinite(msg.target?.y)
+    ) {
+      inputs[idx] = { seq: msg.seq, target: { x: msg.target.x, y: msg.target.y } }
     }
   } else if (msg.type === 'netsim') {
     const c = msg.config
@@ -83,7 +97,7 @@ wss.on('connection', (ws) => {
 
   ws.on('close', () => {
     seats[idx] = null
-    targets[idx] = { ...DEFAULT_TARGETS[idx] }
+    inputs[idx] = { seq: 0, target: { ...DEFAULT_TARGETS[idx] } }
     console.log(`player ${idx} left`)
   })
 })
@@ -101,12 +115,13 @@ setInterval(() => {
   acc = Math.min(acc + (now - last), MAX_CATCHUP_MS)
   last = now
   while (acc >= tickMs) {
-    state = step(state, { targets: [{ ...targets[0] }, { ...targets[1] }] })
+    state = step(state, { targets: [{ ...inputs[0].target }, { ...inputs[1].target }] })
     acc -= tickMs
     if (state.tick % SNAPSHOT_EVERY === 0) {
-      const msg: ServerMsg = { type: 'snapshot', state }
-      for (const seat of seats) {
-        if (seat !== null) send(seat, msg)
+      // Personalized per seat: each player gets the ack for THEIR inputs.
+      for (let i = 0; i < 2; i++) {
+        const seat = seats[i]
+        if (seat !== null) send(seat, { type: 'snapshot', state, ack: inputs[i].seq })
       }
     }
   }

@@ -16,10 +16,16 @@ export interface NetSimConfig {
 }
 
 export type ClientMsg =
-  | { type: 'input'; target: Vec2 }
+  /** seq increments per client tick; the server acks the last one applied. */
+  | { type: 'input'; seq: number; target: Vec2 }
   | { type: 'netsim'; config: NetSimConfig }
 
 export type ServerMsg =
   | { type: 'welcome'; playerIndex: 0 | 1 }
-  | { type: 'snapshot'; state: SimState }
+  /**
+   * ack = highest input seq of THIS receiver that the state reflects.
+   * Snapshots are personalized per seat for exactly this field: it is what
+   * lets the client drop confirmed inputs and resimulate only the rest.
+   */
+  | { type: 'snapshot'; state: SimState; ack: number }
   | { type: 'full' }
