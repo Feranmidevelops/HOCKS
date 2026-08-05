@@ -6,7 +6,7 @@ import type { Vec2 } from '../sim/types'
 import type { ClientMsg, ServerMsg } from '../protocol'
 import { NetSim } from './netsim'
 
-const PORT = 8081
+const PORT = Number(process.env.PORT ?? 8081)
 // 60Hz authoritative sim, snapshot every 3rd tick = 20Hz broadcasts.
 const SNAPSHOT_EVERY = 3
 // Clamp catch-up work after event-loop stalls, same as the client loop.

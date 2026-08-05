@@ -2,6 +2,7 @@ import { DT } from '../sim/constants'
 import { step } from '../sim/step'
 import type { InputFrame, SimState, Vec2 } from '../sim/types'
 import { lerpState } from './interp'
+import { ErrorSmoother } from './smooth'
 
 const TICK_MS = DT * 1000
 const MAX_FRAME_MS = 250
@@ -24,9 +25,14 @@ export interface PendingInput {
  * During prediction and resimulation the opponent is frozen at their last
  * known position — their future inputs are the one thing we cannot know.
  * That's why puck misprediction is guaranteed, and concentrated exactly at
- * the moment the opponent strikes: the correction arrives one RTT later as
- * a visible jump. Phase 4 shows that jump raw; smoothing it without lying
- * about physics is Phase 5.
+ * the moment the opponent strikes: the correction arrives one RTT later.
+ *
+ * Phase 5: the SIM corrects instantly, but the DISPLAY blends. The gap
+ * between what we showed and the corrected truth goes into an ErrorSmoother
+ * and decays over ~150ms — so at the correction instant the puck doesn't
+ * move on screen at all, then curves onto the true path. Epoch changes
+ * (goals, freeze resets) snap: blending across a teleport lies harder than
+ * the teleport does.
  */
 export class Reconciler {
   private pending: PendingInput[] = []
@@ -35,12 +41,15 @@ export class Reconciler {
   private curr: SimState | null = null
   private acc = 0
   private last: number | null = null
+  private smoother = new ErrorSmoother()
 
   constructor(readonly player: 0 | 1) {}
 
   /** Advance whole local ticks up to `nowMs`; returns one input per tick to send. */
   advance(nowMs: number, target: Vec2): PendingInput[] {
     if (this.last === null) this.last = nowMs
+    const elapsed = Math.min(nowMs - this.last, MAX_FRAME_MS)
+    this.smoother.advance(elapsed)
     this.acc = Math.min(this.acc + (nowMs - this.last), MAX_FRAME_MS)
     this.last = nowMs
     const sent: PendingInput[] = []
@@ -75,18 +84,46 @@ export class Reconciler {
     this.pending = this.pending.filter((p) => p.seq > ack)
     let s = state
     for (const p of this.pending) s = step(s, this.frameFor(p.target, s))
-    // Snap both display states: corrections render raw in Phase 4.
+
+    // Both the old prediction and the new one describe "now" (they can
+    // disagree by a tick of drift — the smoother eats that too). The gap is
+    // the misprediction; hand it to the smoother instead of the screen.
+    const before = this.curr
+    if (before !== null) {
+      const epochChanged =
+        before.score[0] !== s.score[0] ||
+        before.score[1] !== s.score[1] ||
+        s.freeze > before.freeze
+      if (epochChanged) {
+        this.smoother.reset()
+      } else {
+        this.smoother.addCorrection(
+          { x: before.puck.pos.x - s.puck.pos.x, y: before.puck.pos.y - s.puck.pos.y },
+          { x: before.puck.vel.x - s.puck.vel.x, y: before.puck.vel.y - s.puck.vel.y },
+        )
+      }
+    }
+
     this.prev = s
     this.curr = s
   }
 
-  /** Predicted state for display, interpolated between local ticks. */
+  /** Predicted state for display: sim truth plus the decaying error offset. */
   view(): SimState | null {
     if (this.prev === null || this.curr === null) return null
-    return lerpState(this.prev, this.curr, this.acc / TICK_MS)
+    const v = lerpState(this.prev, this.curr, this.acc / TICK_MS)
+    const o = this.smoother.offset()
+    v.puck.pos.x += o.x
+    v.puck.pos.y += o.y
+    return v
   }
 
   pendingCount(): number {
     return this.pending.length
+  }
+
+  /** Current visual correction error, in table units (0 = display is truthful). */
+  correctionError(): number {
+    return this.smoother.magnitude()
   }
 }
