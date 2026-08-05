@@ -4,9 +4,11 @@ import { step } from '../sim/step'
 import { createInitialState } from '../sim/types'
 import type { Vec2 } from '../sim/types'
 import type { ClientMsg, ServerMsg } from '../protocol'
+import { GameDirector, WIN_SCORE_DEFAULT, type Transition } from './director'
 import { NetSim } from './netsim'
 
 const PORT = Number(process.env.PORT ?? 8081)
+const WIN_SCORE = Number(process.env.WIN_SCORE ?? WIN_SCORE_DEFAULT)
 // 60Hz authoritative sim, snapshot every 3rd tick = 20Hz broadcasts.
 const SNAPSHOT_EVERY = 3
 // Clamp catch-up work after event-loop stalls, same as the client loop.
@@ -36,8 +38,35 @@ const inputs: [LatestInput, LatestInput] = [
   { seq: 0, target: { ...DEFAULT_TARGETS[1] } },
 ]
 
+const director = new GameDirector(WIN_SCORE)
+
+/** Fresh game, same tick counter — client buffers reject rewound ticks. */
+function resetGame(): void {
+  state = { ...createInitialState(), tick: state.tick }
+}
+
+function gameMsg(): ServerMsg | null {
+  if (director.mode === 'idle') return null
+  return { type: 'game', mode: director.mode, winner: director.winner }
+}
+
+function broadcastGame(): void {
+  const msg = gameMsg()
+  if (msg === null) return
+  for (const seat of seats) {
+    if (seat !== null) send(seat, msg)
+  }
+}
+
+function apply(t: Transition): void {
+  if (t.reset) resetGame()
+  if (t.changed || t.reset) broadcastGame()
+}
+
 function handle(idx: 0 | 1, seat: Seat, msg: ClientMsg): void {
-  if (msg.type === 'input') {
+  if (msg.type === 'rematch') {
+    apply(director.rematch(idx))
+  } else if (msg.type === 'input') {
     // Never let non-finite numbers into the sim — NaN poisons every state
     // downstream of it. The sim clamps range; we only vet finiteness.
     if (
@@ -82,7 +111,10 @@ wss.on('connection', (ws) => {
   const seat: Seat = { ws, inbound: new NetSim(), outbound: new NetSim() }
   seats[idx] = seat
   send(seat, { type: 'welcome', playerIndex: idx })
-  console.log(`player ${idx} joined`)
+  apply(director.join(idx))
+  const g = gameMsg()
+  if (g !== null) send(seat, g) // fresh joiner always learns the current mode
+  console.log(`player ${idx} joined (${director.mode})`)
 
   ws.on('message', (data) => {
     let msg: ClientMsg
@@ -98,7 +130,8 @@ wss.on('connection', (ws) => {
   ws.on('close', () => {
     seats[idx] = null
     inputs[idx] = { seq: 0, target: { ...DEFAULT_TARGETS[idx] } }
-    console.log(`player ${idx} left`)
+    apply(director.leave(idx, performance.now()))
+    console.log(`player ${idx} left (${director.mode})`)
   })
 })
 
@@ -112,6 +145,13 @@ const tickMs = DT * 1000
 
 setInterval(() => {
   const now = performance.now()
+  apply(director.poll(now)) // expire a pause the opponent never came back from
+  if (!director.shouldStep()) {
+    // Paused/over/idle: hold the sim; don't bank catch-up time either.
+    last = now
+    acc = 0
+    return
+  }
   acc = Math.min(acc + (now - last), MAX_CATCHUP_MS)
   last = now
   while (acc >= tickMs) {
@@ -124,6 +164,8 @@ setInterval(() => {
         if (seat !== null) send(seat, { type: 'snapshot', state, ack: inputs[i].seq })
       }
     }
+    apply(director.afterStep(state.score)) // the server owns wins, like goals
+    if (!director.shouldStep()) break
   }
 }, 4)
 

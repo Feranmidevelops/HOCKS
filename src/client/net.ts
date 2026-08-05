@@ -1,10 +1,17 @@
 import type { SimState } from '../sim/types'
-import type { ClientMsg, ServerMsg } from '../protocol'
+import type { ClientMsg, LiveGameMode, ServerMsg } from '../protocol'
+
+export interface GameInfo {
+  mode: LiveGameMode
+  winner: 0 | 1 | null
+}
 
 export interface NetClient {
   /** Most recent snapshot the server has sent, or null before the first. */
   latest: () => SimState | null
   playerIndex: () => 0 | 1 | null
+  /** What the room is doing per the server: solo/versus/paused/over. */
+  game: () => GameInfo
   status: () => string
   send: (msg: ClientMsg) => void
 }
@@ -21,6 +28,7 @@ export function connect(url: string, handlers: NetHandlers = {}): NetClient {
   let ws: WebSocket
   let latest: SimState | null = null
   let playerIndex: 0 | 1 | null = null
+  let game: GameInfo = { mode: 'solo', winner: null }
   let status = 'connecting…'
   let rejected = false
 
@@ -35,6 +43,7 @@ export function connect(url: string, handlers: NetHandlers = {}): NetClient {
         latest = msg.state
         handlers.onSnapshot?.(msg.state, msg.ack)
       } else if (msg.type === 'welcome') playerIndex = msg.playerIndex
+      else if (msg.type === 'game') game = { mode: msg.mode, winner: msg.winner }
       else if (msg.type === 'full') {
         rejected = true
         status = 'server full (two players max)'
@@ -55,6 +64,7 @@ export function connect(url: string, handlers: NetHandlers = {}): NetClient {
   return {
     latest: () => latest,
     playerIndex: () => playerIndex,
+    game: () => game,
     status: () => status,
     send: (msg) => {
       if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg))

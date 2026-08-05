@@ -35,9 +35,23 @@ const net = connect(`ws://${location.hostname}:${wsPort}`, {
     buffer.push(s, performance.now())
     reconciler?.onSnapshot(s, ack)
   },
-  onDrop: () => buffer.reset(),
+  onDrop: () => {
+    // Reconnect may seat us elsewhere and the server resets our input seq —
+    // start the local timeline over from the next authoritative snapshot.
+    buffer.reset()
+    reconciler = null
+    rematchAsked = false
+  },
 })
 const pointer = trackPointer(canvas)
+let rematchAsked = false
+
+canvas.addEventListener('pointerdown', () => {
+  if (net.game().mode === 'over' && !rematchAsked) {
+    net.send({ type: 'rematch' })
+    rematchAsked = true
+  }
+})
 
 // Debug handle: lets tooling (and later the Phase 7 overlay) compare the
 // interpolated past view against the raw snapshot and the predicted present.
@@ -46,6 +60,7 @@ const pointer = trackPointer(canvas)
   latest: () => net.latest(),
   predicted: () => (reconciler === null ? null : reconciler.view()),
   err: () => (reconciler === null ? 0 : reconciler.correctionError()),
+  game: () => net.game(),
 }
 
 // Phase 4 render composition, entity by entity:
@@ -53,12 +68,27 @@ const pointer = trackPointer(canvas)
 //   opponent paddle   → interpolation buffer (~100ms in the past, smooth —
 //                       their inputs can't be predicted, only replayed)
 //   score / freeze    → server's word; goals are the server's call
+function overlay(title: string, subtitle: string) {
+  ctx.fillStyle = 'rgba(11, 14, 20, 0.72)'
+  ctx.fillRect(0, TABLE_H / 2 - 130, TABLE_W, 190)
+  ctx.textAlign = 'center'
+  ctx.fillStyle = '#e8e6e3'
+  ctx.font = 'bold 44px system-ui, sans-serif'
+  ctx.fillText(title, TABLE_W / 2, TABLE_H / 2 - 60)
+  ctx.fillStyle = '#8b96ad'
+  ctx.font = '22px system-ui, sans-serif'
+  ctx.fillText(subtitle, TABLE_W / 2, TABLE_H / 2 - 14)
+}
+
 function frame() {
   ctx.setTransform(canvas.width / TABLE_W, 0, 0, canvas.height / TABLE_H, 0, 0)
   const now = performance.now()
   let s = buffer.sample(now) ?? net.latest()
   const idx = net.playerIndex()
-  if (idx !== null) {
+  const g = net.game()
+  const live = g.mode === 'solo' || g.mode === 'versus'
+  if (g.mode !== 'over') rematchAsked = false
+  if (idx !== null && live) {
     if (reconciler === null || reconciler.player !== idx) reconciler = new Reconciler(idx)
     for (const input of reconciler.advance(now, toTableCoords(pointer(), idx))) {
       net.send({ type: 'input', seq: input.seq, target: input.target })
@@ -80,6 +110,14 @@ function frame() {
     ctx.font = 'bold 24px system-ui, sans-serif'
     ctx.textAlign = 'center'
     ctx.fillText('waiting for server…', TABLE_W / 2, TABLE_H / 2 - 100)
+  }
+  if (g.mode === 'paused') {
+    overlay('PAUSED', 'opponent disconnected — waiting for them to return…')
+  } else if (g.mode === 'over' && idx !== null) {
+    overlay(
+      g.winner === idx ? 'YOU WIN 🏆' : 'YOU LOSE',
+      rematchAsked ? 'rematch requested — waiting for opponent…' : 'click or tap for a rematch',
+    )
   }
   // The view flip means every player sees themselves as blue at the bottom.
   const idxText = idx === null ? '' : ` · player ${idx} · you are blue (bottom)`
