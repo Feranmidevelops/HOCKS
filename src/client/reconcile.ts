@@ -65,7 +65,9 @@ export class Reconciler {
     this.pending.push(input)
     if (this.curr !== null) {
       this.prev = this.curr
-      this.curr = step(this.curr, this.frameFor(input.target, this.curr))
+      // resolveGoals=false: the predicted timeline never scores or resets —
+      // the server owns goals; a locally-crossed puck parks in the void.
+      this.curr = step(this.curr, this.frameFor(input.target, this.curr), false)
     }
     return input
   }
@@ -83,7 +85,7 @@ export class Reconciler {
   onSnapshot(state: SimState, ack: number): void {
     this.pending = this.pending.filter((p) => p.seq > ack)
     let s = state
-    for (const p of this.pending) s = step(s, this.frameFor(p.target, s))
+    for (const p of this.pending) s = step(s, this.frameFor(p.target, s), false)
 
     // Both the old prediction and the new one describe "now" (they can
     // disagree by a tick of drift — the smoother eats that too). The gap is
