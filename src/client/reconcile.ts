@@ -42,6 +42,9 @@ export class Reconciler {
   private acc = 0
   private last: number | null = null
   private smoother = new ErrorSmoother()
+  /** Overlay metrics: what the last reconciliation looked like. */
+  private lastCorrectionMag = 0
+  private lastResim = 0
 
   constructor(readonly player: 0 | 1) {}
 
@@ -84,6 +87,7 @@ export class Reconciler {
   /** Reset to authority, drop acked inputs, resimulate the rest. */
   onSnapshot(state: SimState, ack: number): void {
     this.pending = this.pending.filter((p) => p.seq > ack)
+    this.lastResim = this.pending.length
     let s = state
     for (const p of this.pending) s = step(s, this.frameFor(p.target, s), false)
 
@@ -92,6 +96,10 @@ export class Reconciler {
     // the misprediction; hand it to the smoother instead of the screen.
     const before = this.curr
     if (before !== null) {
+      this.lastCorrectionMag = Math.hypot(
+        before.puck.pos.x - s.puck.pos.x,
+        before.puck.pos.y - s.puck.pos.y,
+      )
       const epochChanged =
         before.score[0] !== s.score[0] ||
         before.score[1] !== s.score[1] ||
@@ -127,5 +135,15 @@ export class Reconciler {
   /** Current visual correction error, in table units (0 = display is truthful). */
   correctionError(): number {
     return this.smoother.magnitude()
+  }
+
+  /** Puck-position gap adopted at the last reconciliation. */
+  lastCorrection(): number {
+    return this.lastCorrectionMag
+  }
+
+  /** Unacked inputs replayed at the last reconciliation ≈ RTT in ticks. */
+  lastResimTicks(): number {
+    return this.lastResim
   }
 }
