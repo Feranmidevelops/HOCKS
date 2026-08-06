@@ -70,7 +70,7 @@ describe('paddle-puck', () => {
 })
 
 describe('goals', () => {
-  it('a puck through the mouth scores, freezes play, and resets to centre', () => {
+  it('a puck through the mouth scores, freezes play, and serves to the conceder', () => {
     const { state: start, input } = parkedState()
     start.puck.pos = { x: TABLE_W / 2, y: 120 }
     start.puck.vel = { x: 0, y: -800 }
@@ -79,7 +79,8 @@ describe('goals', () => {
     expect(state.score[0]).toBe(1)
     expect(state.score[1]).toBe(0)
     expect(state.freeze).toBeGreaterThan(0)
-    expect(state.puck.pos).toStrictEqual({ x: TABLE_W / 2, y: TABLE_H / 2 })
+    // Player 0 scored, so player 1 serves: puck deep in the top half.
+    expect(state.puck.pos).toStrictEqual({ x: TABLE_W / 2, y: TABLE_H * 0.28 })
   })
 
   it('the same shot beside the mouth bounces instead', () => {
