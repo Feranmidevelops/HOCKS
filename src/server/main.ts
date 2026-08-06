@@ -1,3 +1,7 @@
+import { existsSync } from 'node:fs'
+import { readFile } from 'node:fs/promises'
+import { createServer } from 'node:http'
+import { extname, join, normalize } from 'node:path'
 import { WebSocketServer, WebSocket } from 'ws'
 import { DT, TABLE_H, TABLE_W } from '../sim/constants'
 import { step } from '../sim/step'
@@ -64,7 +68,11 @@ function apply(t: Transition): void {
 }
 
 function handle(idx: 0 | 1, seat: Seat, msg: ClientMsg): void {
-  if (msg.type === 'rematch') {
+  if (msg.type === 'ping') {
+    // Echo through the outbound netsim too: the measured RTT honestly
+    // includes both directions of whatever conditions are dialed in.
+    if (Number.isFinite(msg.t)) send(seat, { type: 'pong', t: msg.t })
+  } else if (msg.type === 'rematch') {
     apply(director.rematch(idx))
   } else if (msg.type === 'input') {
     // Never let non-finite numbers into the sim — NaN poisons every state
@@ -99,7 +107,50 @@ function send(seat: Seat, msg: ServerMsg): void {
   })
 }
 
-const wss = new WebSocketServer({ port: PORT })
+// In production this one process serves the built client AND the game socket
+// on the same port; in dev, vite serves the client and this returns a hint.
+const DIST = join(process.cwd(), 'dist')
+const MIME: Record<string, string> = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.ico': 'image/x-icon',
+  '.map': 'application/json',
+}
+
+const httpServer = createServer(async (req, res) => {
+  if (req.url === '/healthz') {
+    res.writeHead(200, { 'content-type': 'text/plain' })
+    res.end('ok')
+    return
+  }
+  if (!existsSync(DIST)) {
+    res.writeHead(503, { 'content-type': 'text/plain' })
+    res.end('no client build here - run `npm run build`, or use the vite dev server on :5173')
+    return
+  }
+  const urlPath = (req.url ?? '/').split('?')[0]
+  const safe = normalize(urlPath).replace(/^([.][.][/\\])+/, '')
+  const file = join(DIST, safe === '/' || safe === '\\' ? 'index.html' : safe)
+  try {
+    const data = await readFile(file)
+    res.writeHead(200, { 'content-type': MIME[extname(file)] ?? 'application/octet-stream' })
+    res.end(data)
+  } catch {
+    try {
+      const index = await readFile(join(DIST, 'index.html'))
+      res.writeHead(200, { 'content-type': MIME['.html'] })
+      res.end(index)
+    } catch {
+      res.writeHead(404, { 'content-type': 'text/plain' })
+      res.end('not found')
+    }
+  }
+})
+
+const wss = new WebSocketServer({ server: httpServer })
 
 wss.on('connection', (ws) => {
   const idx = seats[0] === null ? 0 : seats[1] === null ? 1 : null
@@ -169,4 +220,7 @@ setInterval(() => {
   }
 }, 4)
 
-console.log(`HOCKS authoritative server on ws://localhost:${PORT} (60Hz sim, 20Hz snapshots)`)
+httpServer.listen(PORT, () => {
+  const client = existsSync(DIST) ? 'serving built client from dist/' : 'ws only (no dist build)'
+  console.log(`HOCKS authoritative server on :${PORT} (60Hz sim, 20Hz snapshots, ${client})`)
+})
