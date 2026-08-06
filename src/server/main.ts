@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
+import { networkInterfaces } from 'node:os'
 import { extname, join, normalize } from 'node:path'
 import { WebSocketServer, WebSocket } from 'ws'
 import { DT, TABLE_H, TABLE_W } from '../sim/constants'
@@ -242,4 +243,12 @@ setInterval(() => {
 httpServer.listen(PORT, () => {
   const client = existsSync(DIST) ? 'serving built client from dist/' : 'ws only (no dist build)'
   console.log(`HOCKS authoritative server on :${PORT} (60Hz sim, 20Hz snapshots, ${client})`)
+  // Same-room play wants the server in the room: print the shareable URLs.
+  for (const nets of Object.values(networkInterfaces())) {
+    for (const net of nets ?? []) {
+      if (net.family === 'IPv4' && !net.internal) {
+        console.log(`  share on your network: http://${net.address}:${PORT}`)
+      }
+    }
+  }
 })
