@@ -19,6 +19,8 @@ export interface SimState {
   score: [number, number]
   /** Ticks until the puck is live again after a goal. */
   freeze: number
+  /** Consecutive ticks the puck has sat at rest on the table (anti-stall). */
+  stalled: number
 }
 
 /** Everything the sim needs to advance one tick. */
@@ -37,5 +39,6 @@ export function createInitialState(): SimState {
     ],
     score: [0, 0],
     freeze: 0,
+    stalled: 0,
   }
 }
