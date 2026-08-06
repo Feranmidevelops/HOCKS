@@ -13,7 +13,7 @@ The goal isn't the game; it's the networking. Each phase adds one technique real
 - [x] **Phase 4** — Puck prediction & reconciliation
 - [x] **Phase 5** — Error correction that doesn't look like teleporting
 - [x] **Phase 6** — Contested outcomes, reconnects, rematch flow
-- [ ] **Phase 7** — Debug overlay + measured numbers from real regions
+- [x] **Phase 7** — Debug overlay + deployment (measured region numbers: pending the fly.io deploy below)
 
 ## Run it
 
@@ -64,6 +64,40 @@ The rest of what separates a demo from a game, driven by a unit-tested server st
 - **Reconnect mid-rally**: rejoining a paused game resumes it — score and puck untouched
 - **Rematch**: first to 7 wins (server-decided, like goals; `WIN_SCORE` env for testing); both players click to start a fresh game on the same connection
 - Game resets keep the tick counter monotonic — client snapshot buffers reject rewound ticks by design
+
+## Phase 7: the overlay
+
+The panel in the top-right shows the numbers every phase of this project was tuned around, live:
+
+| line | meaning |
+|---|---|
+| `rtt` | round trip measured by ping/pong — echoed through the netsim, so dialed-in conditions show up honestly |
+| `snapshots` | mean inter-arrival gap (expect 50ms at 20Hz) ± mean absolute deviation — the felt jitter |
+| `resim` | unacked inputs replayed at the last reconciliation — literally your RTT expressed in ticks |
+| `correction` | puck-position gap adopted per reconciliation (avg + 5s max) — misprediction, quantified |
+| `smoothing` | the error offset currently being blended out of the display |
+| `traffic` | wire bytes each way (the full state is ~600 bytes of JSON — bandwidth was never the lesson here) |
+
+Sanity check against the simulator: dial in 150ms + 30ms jitter and the overlay reads `rtt 320ms · snapshots 50 ±11.5ms · resim 21 ticks`.
+
+## Deploying the two regions
+
+The server serves the built client and the game socket on one port (`npm run build`, then `PORT=8080 npx tsx src/server/main.ts`), so a deploy is a single container — see `Dockerfile`. Fly.io configs for both regions are in `deploy/`:
+
+```
+fly auth login
+fly apps create hocks-jnb && fly deploy --config deploy/fly.jnb.toml   # Johannesburg — nearest region to Lagos
+fly apps create hocks-lax && fly deploy --config deploy/fly.lax.toml   # Los Angeles — deliberately far
+```
+
+Measuring is just reading the overlay: open `https://hocks-jnb.fly.dev` and note the numbers, then `https://hocks-jnb.fly.dev/?server=hocks-lax.fly.dev` to play the same client against the far region. Fill in from Lagos:
+
+| | hocks-jnb (Johannesburg) | hocks-lax (Los Angeles) |
+|---|---|---|
+| rtt | _measure me_ | _measure me_ |
+| snapshot jitter | _measure me_ | _measure me_ |
+| resim ticks | _measure me_ | _measure me_ |
+| playable? | _honest answer_ | _honest answer_ |
 
 ## Tests
 

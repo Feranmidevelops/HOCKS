@@ -6,6 +6,7 @@ import { SnapshotBuffer } from './interp'
 import { connect } from './net'
 import { Reconciler } from './reconcile'
 import { render } from './render'
+import { Stats } from './stats'
 import { toTableCoords, toViewState } from './view'
 
 const canvas = document.querySelector<HTMLCanvasElement>('#game')!
@@ -28,13 +29,34 @@ window.addEventListener('resize', fit)
 let reconciler: Reconciler | null = null
 
 const buffer = new SnapshotBuffer()
-// ?port=8082 points this client at an alternate server instance (testing).
-const wsPort = new URLSearchParams(location.search).get('port') ?? '8081'
-const net = connect(`ws://${location.hostname}:${wsPort}`, {
+const stats = new Stats()
+
+// Server selection: ?server=host takes a full host (cross-region testing),
+// ?port=N an alternate local instance; in dev default to :8081 (vite serves
+// the page); in production the game server serves this page — same origin.
+const params = new URLSearchParams(location.search)
+const serverParam = params.get('server')
+const portParam = params.get('port')
+const wsUrl = serverParam
+  ? `${serverParam.startsWith('localhost') || serverParam.startsWith('127.') ? 'ws' : 'wss'}://${serverParam}`
+  : portParam
+    ? `ws://${location.hostname}:${portParam}`
+    : import.meta.env.DEV
+      ? `ws://${location.hostname}:8081`
+      : `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`
+
+const net = connect(wsUrl, {
   onSnapshot: (s, ack) => {
-    buffer.push(s, performance.now())
-    reconciler?.onSnapshot(s, ack)
+    const now = performance.now()
+    buffer.push(s, now)
+    stats.snapshotArrived(now)
+    if (reconciler !== null) {
+      reconciler.onSnapshot(s, ack)
+      stats.correction(reconciler.lastCorrection(), reconciler.lastResimTicks(), now)
+    }
   },
+  onPong: (rtt) => stats.pong(rtt),
+  onBytes: (dir, n) => stats.bytes(dir, n, performance.now()),
   onDrop: () => {
     // Reconnect may seat us elsewhere and the server resets our input seq —
     // start the local timeline over from the next authoritative snapshot.
@@ -61,7 +83,29 @@ canvas.addEventListener('pointerdown', () => {
   predicted: () => (reconciler === null ? null : reconciler.view()),
   err: () => (reconciler === null ? 0 : reconciler.correctionError()),
   game: () => net.game(),
+  stats: () => stats.report(performance.now()),
 }
+
+// RTT probe: one ping a second, echoed through the netsim pipeline.
+setInterval(() => net.send({ type: 'ping', t: performance.now() }), 1000)
+
+// The overlay: the project's numbers, live. Updated at 4Hz — fast enough to
+// watch, slow enough to read.
+const statsEl = document.querySelector<HTMLDivElement>('#stats')!
+setInterval(() => {
+  const r = stats.report(performance.now())
+  const err = reconciler === null ? 0 : reconciler.correctionError()
+  const fmt = (v: number | null, unit: string, digits = 0) =>
+    v === null ? '—' : `${v.toFixed(digits)}${unit}`
+  statsEl.textContent = [
+    `rtt         ${fmt(r.rttMs, ' ms')}`,
+    `snapshots   ${fmt(r.snapGapMeanMs, '', 0)} ±${fmt(r.snapJitterMs, ' ms', 1)}`,
+    `resim       ${r.resimTicks} ticks`,
+    `correction  ${r.correctionAvg.toFixed(1)}u avg · ${r.correctionMax.toFixed(0)}u max`,
+    `smoothing   ${err.toFixed(1)}u`,
+    `traffic     ↓${(r.bytesInPerSec / 1024).toFixed(1)} ↑${(r.bytesOutPerSec / 1024).toFixed(1)} KB/s`,
+  ].join('\n')
+}, 250)
 
 // Phase 4 render composition, entity by entity:
 //   own paddle + puck → predicted state (present time, reconciled each snapshot)

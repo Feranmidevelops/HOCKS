@@ -21,6 +21,9 @@ export interface NetHandlers {
   onSnapshot?: (state: SimState, ack: number) => void
   /** Fired when the connection drops — interpolation buffers must reset. */
   onDrop?: () => void
+  /** Overlay hooks: rtt echo and wire traffic accounting. */
+  onPong?: (rttMs: number) => void
+  onBytes?: (dir: 'in' | 'out', count: number) => void
 }
 
 /** Connect to the game server; reconnects automatically unless it was full. */
@@ -38,12 +41,15 @@ export function connect(url: string, handlers: NetHandlers = {}): NetClient {
       status = 'connected'
     }
     ws.onmessage = (e) => {
-      const msg: ServerMsg = JSON.parse(String(e.data))
+      const raw = String(e.data)
+      handlers.onBytes?.('in', raw.length)
+      const msg: ServerMsg = JSON.parse(raw)
       if (msg.type === 'snapshot') {
         latest = msg.state
         handlers.onSnapshot?.(msg.state, msg.ack)
       } else if (msg.type === 'welcome') playerIndex = msg.playerIndex
       else if (msg.type === 'game') game = { mode: msg.mode, winner: msg.winner }
+      else if (msg.type === 'pong') handlers.onPong?.(performance.now() - msg.t)
       else if (msg.type === 'full') {
         rejected = true
         status = 'server full (two players max)'
@@ -67,7 +73,11 @@ export function connect(url: string, handlers: NetHandlers = {}): NetClient {
     game: () => game,
     status: () => status,
     send: (msg) => {
-      if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg))
+      if (ws.readyState === WebSocket.OPEN) {
+        const data = JSON.stringify(msg)
+        handlers.onBytes?.('out', data.length)
+        ws.send(data)
+      }
     },
   }
 }
