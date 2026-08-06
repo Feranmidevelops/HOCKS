@@ -152,7 +152,26 @@ const httpServer = createServer(async (req, res) => {
 
 const wss = new WebSocketServer({ server: httpServer })
 
+// Heartbeat: browsers that vanish without a clean close (sleep, killed tab,
+// phone lock) would otherwise hold their seat forever. Ping every 10s and
+// reap sockets that never answered — terminate() fires 'close', which frees
+// the seat through the normal leave path.
+const HEARTBEAT_MS = 10_000
+const alive = new WeakMap<WebSocket, boolean>()
+setInterval(() => {
+  for (const client of wss.clients) {
+    if (alive.get(client) === false) {
+      client.terminate()
+      continue
+    }
+    alive.set(client, false)
+    client.ping()
+  }
+}, HEARTBEAT_MS)
+
 wss.on('connection', (ws) => {
+  alive.set(ws, true)
+  ws.on('pong', () => alive.set(ws, true))
   const idx = seats[0] === null ? 0 : seats[1] === null ? 1 : null
   if (idx === null) {
     ws.send(JSON.stringify({ type: 'full' } satisfies ServerMsg))
