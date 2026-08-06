@@ -82,7 +82,11 @@ Sanity check against the simulator: dial in 150ms + 30ms jitter and the overlay 
 
 ## Deploying the two regions
 
-The server serves the built client and the game socket on one port (`npm run build`, then `PORT=8080 npx tsx src/server/main.ts`), so a deploy is a single container — see `Dockerfile`. Fly.io configs for both regions are in `deploy/`:
+The server serves the built client and the game socket on one port (`npm run build`, then `PORT=8080 npx tsx src/server/main.ts`), so a deploy is a single container — see `Dockerfile`.
+
+**No-card path (used for the published numbers): Render.** Sign in at render.com with GitHub → New → **Blueprint** → pick this repo → Apply. `render.yaml` stands up both regions at once: `hocks-frankfurt` (the near-ish region — Lagos traffic routes to Europe well; even Johannesburg is usually reached *via* Europe from West Africa) and `hocks-oregon` (deliberately far). Free instances sleep when idle; the first visit after a sleep takes ~a minute to wake.
+
+**Card-verified path: Fly.io** — configs for Johannesburg and Los Angeles are in `deploy/`:
 
 ```
 fly auth login
@@ -90,9 +94,9 @@ fly apps create hocks-jnb && fly deploy --config deploy/fly.jnb.toml   # Johanne
 fly apps create hocks-lax && fly deploy --config deploy/fly.lax.toml   # Los Angeles — deliberately far
 ```
 
-Measuring is just reading the overlay: open `https://hocks-jnb.fly.dev` and note the numbers, then `https://hocks-jnb.fly.dev/?server=hocks-lax.fly.dev` to play the same client against the far region. Fill in from Lagos:
+Measuring is just reading the overlay (add `?debug=1`): open the near region's URL and note the numbers, then `?server=<far-host>&debug=1` to play the same client against the far region. Measured from Lagos:
 
-| | hocks-jnb (Johannesburg) | hocks-lax (Los Angeles) |
+| | hocks-frankfurt (near) | hocks-oregon (far) |
 |---|---|---|
 | rtt | _measure me_ | _measure me_ |
 | snapshot jitter | _measure me_ | _measure me_ |

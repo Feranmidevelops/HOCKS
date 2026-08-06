@@ -1,0 +1,18 @@
+# Render Blueprint: both measurement regions from one click.
+# render.com → New → Blueprint → select this repo → Apply.
+# Free plan: no card needed; instances sleep when idle (first visit after a
+# sleep takes ~1 min to wake — the measured RTT is unaffected once awake).
+services:
+  - type: web
+    name: hocks-frankfurt # the near-ish region: Lagos routes to Europe well
+    runtime: docker
+    region: frankfurt
+    plan: free
+    healthCheckPath: /healthz
+
+  - type: web
+    name: hocks-oregon # the deliberately far region: most of a planet away
+    runtime: docker
+    region: oregon
+    plan: free
+    healthCheckPath: /healthz
