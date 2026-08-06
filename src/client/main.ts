@@ -92,6 +92,22 @@ setInterval(() => net.send({ type: 'ping', t: performance.now() }), 1000)
 // The overlay: the project's numbers, live. Updated at 4Hz — fast enough to
 // watch, slow enough to read.
 const statsEl = document.querySelector<HTMLDivElement>('#stats')!
+
+// Players don't need the dev tooling: the netsim sliders and the stats
+// overlay are hidden unless ?debug=1 is in the URL or 'd' is pressed.
+const netsimEl = document.querySelector<HTMLDivElement>('#netsim')!
+let debugOn = params.has('debug')
+function applyDebugVisibility() {
+  netsimEl.style.display = debugOn ? 'flex' : 'none'
+  statsEl.style.display = debugOn ? 'block' : 'none'
+}
+applyDebugVisibility()
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'd') {
+    debugOn = !debugOn
+    applyDebugVisibility()
+  }
+})
 setInterval(() => {
   const r = stats.report(performance.now())
   const err = reconciler === null ? 0 : reconciler.correctionError()
