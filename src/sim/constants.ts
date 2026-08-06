@@ -20,12 +20,17 @@ export const PADDLE_RESTITUTION = 0.9
 // Fraction of puck velocity retained per second of glide.
 export const FRICTION_RETAIN = 0.6
 
-// Ticks the puck stays dead at centre after a goal before play resumes.
+// Ticks the puck stays dead after a goal before play resumes.
 export const FREEZE_TICKS = 45
 
-// Phase 0 only: the player can't reach the far half, so a puck that stalls
-// there would soft-lock the game. Below MIN_LIVE_SPEED in the far half it
-// gets a deterministic nudge back toward the player's side. Remove when a
-// real opponent exists (Phase 1+).
+// Serve rule: after a goal the puck spawns in the CONCEDER's half, at a
+// depth the scorer physically cannot reach (their paddle is clamped to the
+// other half) — only the loser of the round can strike first.
+export const SERVE_DEPTH = 0.28
+
+// Anti-stall: a puck at rest (below MIN_LIVE_SPEED) anywhere on the table
+// for STALL_TICKS drifts back toward centre at RESCUE_SPEED. Unsticks
+// unreachable pucks, ignored serves, and the solo wall-opponent's serve.
 export const MIN_LIVE_SPEED = 30
+export const STALL_TICKS = 150
 export const RESCUE_SPEED = 140

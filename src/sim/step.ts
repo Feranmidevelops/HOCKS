@@ -6,6 +6,8 @@ import {
   PUCK_MAX_SPEED,
   PUCK_R,
   RESCUE_SPEED,
+  SERVE_DEPTH,
+  STALL_TICKS,
   SUBSTEPS,
   TABLE_H,
   TABLE_W,
@@ -35,6 +37,7 @@ export function step(state: SimState, input: InputFrame, resolveGoals = true): S
   const paddles: [Body, Body] = [cloneBody(state.paddles[0]), cloneBody(state.paddles[1])]
   const score: [number, number] = [state.score[0], state.score[1]]
   let freeze = state.freeze
+  let stalled = state.stalled
   let scorer: 0 | 1 | null = null
 
   const dtSub = DT / SUBSTEPS
@@ -86,23 +89,37 @@ export function step(state: SimState, input: InputFrame, resolveGoals = true): S
   if (scorer !== null) {
     score[scorer]++
     freeze = FREEZE_TICKS
-    puck.pos = { x: TABLE_W / 2, y: TABLE_H / 2 }
+    stalled = 0
+    // Serve rule: the puck goes to the CONCEDER, deep enough in their half
+    // that the scorer's clamp keeps them away — only the loser of the round
+    // can strike first.
+    const conceder = scorer === 0 ? 1 : 0
+    puck.pos = {
+      x: TABLE_W / 2,
+      y: conceder === 1 ? TABLE_H * SERVE_DEPTH : TABLE_H * (1 - SERVE_DEPTH),
+    }
     puck.vel = { x: 0, y: 0 }
   } else if (freeze > 0) {
     freeze--
+    stalled = 0
   } else {
-    // Phase 0 anti-soft-lock (see constants.ts): a stalled puck in the
-    // unreachable far half drifts back toward the player's side. On-table
-    // only — a puck parked in the goal void must stay there.
+    // Anti-stall (see constants.ts): a puck at rest on the table — an
+    // ignored serve, or dead in the solo wall-opponent's half — drifts back
+    // toward centre after STALL_TICKS. Voided pucks stay in the goal mouth.
     const speed = Math.hypot(puck.vel.x, puck.vel.y)
-    if (speed < MIN_LIVE_SPEED && puck.pos.y < TABLE_H / 2 - PUCK_R && puck.pos.y > PUCK_R) {
+    const onTable = puck.pos.y > PUCK_R && puck.pos.y < TABLE_H - PUCK_R
+    stalled = speed < MIN_LIVE_SPEED && onTable ? stalled + 1 : 0
+    if (stalled > STALL_TICKS) {
       const dx = TABLE_W / 2 - puck.pos.x
-      const dy = TABLE_H * 0.75 - puck.pos.y
+      const dy = TABLE_H / 2 - puck.pos.y
       const d = Math.hypot(dx, dy)
-      puck.vel.x = (dx / d) * RESCUE_SPEED
-      puck.vel.y = (dy / d) * RESCUE_SPEED
+      if (d > 1e-6) {
+        puck.vel.x = (dx / d) * RESCUE_SPEED
+        puck.vel.y = (dy / d) * RESCUE_SPEED
+      }
+      stalled = 0
     }
   }
 
-  return { tick: state.tick + 1, puck, paddles, score, freeze }
+  return { tick: state.tick + 1, puck, paddles, score, freeze, stalled }
 }

@@ -23,6 +23,7 @@ export function hashState(s: SimState): string {
     s.score[0],
     s.score[1],
     s.freeze,
+    s.stalled,
   ]
 
   const view = new DataView(new ArrayBuffer(8))
