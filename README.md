@@ -94,14 +94,16 @@ fly apps create hocks-jnb && fly deploy --config deploy/fly.jnb.toml   # Johanne
 fly apps create hocks-lax && fly deploy --config deploy/fly.lax.toml   # Los Angeles — deliberately far
 ```
 
-Measuring is just reading the overlay (add `?debug=1`): open the near region's URL and note the numbers, then `?server=<far-host>&debug=1` to play the same client against the far region. Measured from Lagos:
+Measuring is just reading the overlay (add `?debug=1`). **Measured from a real connection in Lagos, 2026-08-06** (5-ping median, both instances warm):
 
-| | hocks-frankfurt (near) | hocks-oregon (far) |
+| | [hocks-frankfurt](https://hocks-frankfurt.onrender.com) (near) | [hocks-oregon](https://hocks-oregon.onrender.com) (far) |
 |---|---|---|
-| rtt | _measure me_ | _measure me_ |
-| snapshot jitter | _measure me_ | _measure me_ |
-| resim ticks | _measure me_ | _measure me_ |
-| playable? | _honest answer_ | _honest answer_ |
+| rtt | **242ms** (237–295) | **388ms** (378–393) |
+| snapshot jitter | ±3.0ms | ±2.7ms |
+| resim ticks | 16 | 23 |
+| playable? | yes — your paddle and shots are instant (prediction), the opponent runs ~220ms in the past | the tech holds: no stutter, instant paddle — but duels feel remote; fine for a demo, honest to say it's past the fun threshold |
+
+What the numbers teach: the connection out of Lagos is *stable* (±3ms jitter — interpolation barely works up a sweat) but *far* — 242ms to Frankfurt is submarine-cable routing reality, well above the ~130ms fiber ideal. The 146ms gap between regions is the speed of light, visible in an overlay. And `resim` is doing exactly what Phase 4 promised: the client re-simulates your entire RTT's worth of inputs (16–23 ticks) on every snapshot to keep the present feeling instant.
 
 ## Tests
 
