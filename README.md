@@ -26,6 +26,8 @@ npm run dev          # vite client on :5173
 
 Open http://localhost:5173 in two browser windows — first one in is blue, second is red. Each player sees their own goal at the bottom (the view is rotated 180° for player 1).
 
+**House rules:** after a goal, the puck serves in the *conceder's* half — placed where the scorer physically can't reach, so only the loser of the round strikes first (enforced by geometry, not permissions). A puck left at rest anywhere for 2.5s drifts back to centre. First to 7 wins.
+
 The panel in the corner is the network conditions simulator: drag latency to 150ms and feel it. Phase 1 (render snapshots verbatim) surfaced two distinct problems:
 
 1. **Your own paddle lags your finger** — every input rides a full round trip before you see its effect. ~~Fixed by client-side prediction (Phase 3).~~ **Fixed**: the client runs the exact server movement code (`movePaddle`, same substeps) locally and renders the result immediately. Measured at 200ms one-way latency after a fast sweep: the predicted paddle reached the target in 200ms (pure travel time), the server's echo started moving at ~400ms (the RTT) and arrived at 600ms — at *exactly* the predicted position. The paddle is the easy prediction case: it depends only on your own input, which you know instantly and perfectly. The shared puck depends on the opponent's input too — that's Phase 4.
