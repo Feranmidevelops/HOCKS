@@ -38,6 +38,7 @@ export function lerpState(a: SimState, b: SimState, k: number): SimState {
     tick: a.tick,
     score: [a.score[0], a.score[1]],
     freeze: a.freeze,
+    stalled: a.stalled,
     puck: lerpBody(a.puck, b.puck, k),
     paddles: [lerpBody(a.paddles[0], b.paddles[0], k), lerpBody(a.paddles[1], b.paddles[1], k)],
   }

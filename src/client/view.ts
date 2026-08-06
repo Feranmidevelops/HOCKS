@@ -22,6 +22,7 @@ export function toViewState(s: SimState, player: 0 | 1): SimState {
     paddles: [flipBody(s.paddles[1]), flipBody(s.paddles[0])],
     score: [s.score[1], s.score[0]],
     freeze: s.freeze,
+    stalled: s.stalled,
   }
 }
 
