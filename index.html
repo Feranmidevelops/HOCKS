@@ -9,7 +9,7 @@
       body {
         margin: 0;
         height: 100%;
-        background: #0b0e14;
+        background: radial-gradient(1100px at 50% 18%, #131c33, #06080f 75%);
         overflow: hidden;
         font-family: ui-monospace, Consolas, monospace;
       }
@@ -20,6 +20,10 @@
       }
       canvas {
         touch-action: none;
+        border-radius: 14px;
+        box-shadow:
+          0 22px 70px rgba(0, 0, 0, 0.6),
+          0 0 0 1px rgba(120, 170, 255, 0.18);
       }
       #netsim {
         position: fixed;
